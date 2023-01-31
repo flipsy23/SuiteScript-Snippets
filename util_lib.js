@@ -29,6 +29,7 @@ define(["N/query", "N/record", "N/search"], function (query, record, search) {
 					searchResults.push(result);
 			});
 		})
+    }
         
     
 });
