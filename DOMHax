@@ -1,0 +1,321 @@
+/**
+ * @NApiVersion 2.x
+ * @NScriptType Suitelet
+ * @NModuleScope SameAccount
+ */
+//define(['N/ui/serverWidget', 'N/search', './ClientScript.js'], function (serverWidget, search, clientScript) {
+define(['N/ui/serverWidget', 'N/search'], function (serverWidget, search) {
+    function onRequest(context) {
+        if (context.request.method === 'GET') {
+            var form = serverWidget.createForm({
+                title: 'Bulk Subcontractor PO - VB',
+            });
+
+            // Add filters to the form
+            var filter1 = form.addField({
+                id: 'custpage_filter1',
+                type: serverWidget.FieldType.TEXT,
+                label: 'Vendor'
+            });
+
+            var filter2 = form.addField({
+                id: 'custpage_filter2',
+                type: serverWidget.FieldType.TEXT,
+                label: 'Project'
+            });
+
+            // Create the Apply Filter button
+            var applyFilterButton = form.addButton({
+                id: 'custpage_apply_filter',
+                label: 'Apply Filter',
+                functionName: 'applyFilter'
+            });
+
+            form.addSubmitButton({
+                label: 'Create Bulk Vendor Bill'
+            });
+
+            // Add sublist sourced from saved search
+            var sublist = form.addSublist({
+                id: 'custpage_sublist',
+                type: serverWidget.SublistType.LIST,
+                label: 'Vendor Bills'
+            });
+
+            sublist.style = serverWidget.ListStyle.REPORT;
+
+            // checkbox
+            var fldCheckbox = sublist.addField({
+                id: 'custpage_checkbox',
+                type: serverWidget.FieldType.CHECKBOX,
+                label: 'Select'
+            });
+
+            // vendor bill date
+            var fldDate = sublist.addField({
+                id: 'custpage_vbdate',
+                type: serverWidget.FieldType.DATE,
+                label: 'Date'
+            });
+
+            // Purchase Order
+            var fldPorder = sublist.addField({
+                id: 'custpage_porder',
+                type: serverWidget.FieldType.TEXT,
+                label: 'Purchase Order'
+            });
+
+            // Transaction Number
+            var fldTnumber = sublist.addField({
+                id: 'custpage_trannumber',
+                type: serverWidget.FieldType.TEXT,
+                label: 'Transaction Number'
+            });
+
+            // Vendor
+            var fldVendor = sublist.addField({
+                id: 'custpage_vendor',
+                type: serverWidget.FieldType.TEXT,
+                label: 'Vendor'
+            });
+
+            // Project
+            var fldProject = sublist.addField({
+                id: 'custpage_project',
+                type: serverWidget.FieldType.TEXT,
+                label: 'Project'
+            });
+
+            // Item
+            var fldItem = sublist.addField({
+                id: 'custpage_item',
+                type: serverWidget.FieldType.TEXT,
+                label: 'Item'
+            });
+
+            // Amount
+            var fldAmount = sublist.addField({
+                id: 'custpage_amount',
+                type: serverWidget.FieldType.TEXT,
+                label: 'Amount'
+            });
+
+            // Retention Remaining
+            var fldRetRemaining = sublist.addField({
+                id: 'custpage_retremain',
+                type: serverWidget.FieldType.TEXT,
+                label: 'Retention Remaining'
+            });
+
+            // CSC Line Key
+            var fldLineKey = sublist.addField({
+                id: 'custpage_linekey',
+                type: serverWidget.FieldType.TEXT,
+                label: 'Line Key'
+            });
+
+            // Release Amount Editable
+            var fldTextBox = sublist.addField({
+                id: 'custpage_relamount',
+                type: serverWidget.FieldType.TEXT,
+                label: 'Release Amount'
+            });
+
+            fldTextBox.updateDisplayType({
+                displayType: serverWidget.FieldDisplayType.ENTRY
+            });
+
+            // Load saved search and apply filters
+            var mySavedSearch = search.create({
+                type: "vendorbill",
+                filters:
+                    [
+                        ["type", "anyof", "VendBill"],
+                        "AND",
+                        ["item", "anyof", "15108"],
+                        "AND",
+                        ["custcol_sna_csc_retentionremaining", "greaterthan", "0.00"]
+                    ],
+                columns:
+                    [
+                        search.createColumn({
+                            name: "trandate",
+                            sort: search.Sort.ASC,
+                            label: "Date"
+                        }),
+                        search.createColumn({ name: "createdfrom", label: "Purchase Order" }),
+                        search.createColumn({ name: "transactionnumber", label: "Transaction Number" }),
+                        search.createColumn({ name: "mainname", label: "Vendor" }),
+                        search.createColumn({ name: "entity", label: "Project" }),
+                        search.createColumn({ name: "item", label: "Item" }),
+                        search.createColumn({ name: "amount", label: "Amount" }),
+                        search.createColumn({ name: "custcol_sna_csc_retentionremaining", label: "Retention Amount Remaining" }),
+                        search.createColumn({ name: "custcol_sna_csc_line_link", label: "SNA CSC Line Link" })
+                    ]
+            });
+            var searchResultCount = mySavedSearch.runPaged().count;
+            log.debug('searchResultCount', searchResultCount);
+
+            // Set the default values for the filters
+            filter1.defaultValue = context.request.parameters.custpage_filter1 || '';
+            filter2.defaultValue = context.request.parameters.custpage_filter2 || '';
+
+            // Populate sublist based on filters
+            populateSublist(form, sublist, mySavedSearch);
+
+            // Set the client script on the form
+            //form.clientScriptModulePath = './ClientScript.js';
+
+            applyStyleUpdates(form);
+            context.response.writePage(form);
+
+        } else if (context.request.method === 'POST') {
+            // Handle form submission
+
+            // Retrieve the selected rows
+            var selectedRows = context.request.parameters.custpage_sublist;
+            if (!Array.isArray(selectedRows)) {
+                selectedRows = [selectedRows]; // Convert to array if only one row is selected
+            }
+
+            // Create vendor bill records for selected rows
+            for (var i = 0; i < selectedRows.length; i++) {
+                var checkboxValue = selectedRows[i];
+
+                if (checkboxValue === 'T') {
+                    // Retrieve the data from the sublist for the selected row
+                    var field1Value = context.request.parameters['custpage_sublist_custpage_field1'][i];
+                    var field2Value = context.request.parameters['custpage_sublist_custpage_field2'][i];
+                    var textboxValue = context.request.parameters['custpage_sublist_custpage_textbox'][i];
+
+                    // Create the vendor bill record
+                    var vendorBill = record.create({
+                        type: record.Type.VENDOR_BILL
+                    });
+
+                    // Set field values on the vendor bill record
+                    vendorBill.setValue('entity', 123); // Example: Set entity ID
+                    vendorBill.setValue('amount', parseFloat(textboxValue)); // Set the amount from the textbox value          // Save the vendor bill record
+                    var vendorBillId = vendorBill.save({
+                        enableSourcing: true,
+                        ignoreMandatoryFields: true
+                    });
+
+                    // Perform additional logic or actions with the vendor bill record if needed
+                }
+            }
+
+            // Redirect or display a success message to the user
+            context.response.write('Vendor bills created successfully.');
+        }
+    }
+
+    function populateSublist(form, sublist, search) {
+        var searchResults = search.run().getRange({
+            start: 0,
+            end: 1000
+        });
+
+        /*
+        // Clear existing sublist lines
+        sublist.removeLine({
+            sublistId: 'custpage_sublist',
+            line: 0,
+            ignoreRecalc: true
+        });
+        */
+
+        // Populate sublist with search results
+        log.debug('searchResults', searchResults);
+        for (var i = 0; i < searchResults.length; i++) {
+            log.debug('search result 1', searchResults[i].getValue({ name: 'createdfrom' }) ? "yep" : "Nope");
+            /*
+            sublist.setSublistValue({
+                id: 'custpage_checkbox',
+                line: i,
+                value: false
+            });
+            */
+
+            sublist.setSublistValue({
+                id: 'custpage_vbdate',
+                line: i,
+                value: searchResults[i].getValue({ name: 'trandate' }) ? searchResults[i].getValue({ name: 'trandate' }) : " "
+            });
+
+            sublist.setSublistValue({
+                id: 'custpage_porder',
+                line: i,
+                value: searchResults[i].getValue({ name: 'createdfrom' }) ? searchResults[i].getValue({ name: 'createdfrom' }) : " "
+            });
+
+            sublist.setSublistValue({
+                id: 'custpage_trannumber',
+                line: i,
+                value: searchResults[i].getValue({ name: 'transactionnumber' }) ? searchResults[i].getValue({ name: 'transactionnumber' }) : " "
+            });
+
+            sublist.setSublistValue({
+                id: 'custpage_vendor',
+                line: i,
+                value: searchResults[i].getValue({ name: 'mainname' }) ? searchResults[i].getValue({ name: 'mainname' }) : " "
+            });
+
+            sublist.setSublistValue({
+                id: 'custpage_project',
+                line: i,
+                value: searchResults[i].getValue({ name: 'entity' }) ? searchResults[i].getValue({ name: 'entity' }) : " "
+            });
+
+            sublist.setSublistValue({
+                id: 'custpage_item',
+                line: i,
+                value: searchResults[i].getValue({ name: 'item' }) ? searchResults[i].getValue({ name: 'item' }) : " "
+            });
+
+            sublist.setSublistValue({
+                id: 'custpage_amount',
+                line: i,
+                value: searchResults[i].getValue({ name: 'amount' }) ? searchResults[i].getValue({ name: 'amount' }) : " "
+            });
+
+            sublist.setSublistValue({
+                id: 'custpage_retremain',
+                line: i,
+                value: searchResults[i].getValue({ name: 'custcol_sna_csc_retentionremaining' }) ? searchResults[i].getValue({ name: 'custcol_sna_csc_retentionremaining' }) : " "
+            });
+
+            sublist.setSublistValue({
+                id: 'custpage_linekey',
+                line: i,
+                value: searchResults[i].getValue({ name: 'custcol_sna_csc_line_link' }) ? searchResults[i].getValue({ name: 'custcol_sna_csc_line_link' }) : " "
+            });
+
+            sublist.setSublistValue({
+                id: 'custpage_relamount',
+                line: i,
+                value: ' '
+            });
+        }
+    }
+
+    function applyStyleUpdates(form) {
+        var script = "<script>" +
+            "window.addEventListener('DOMContentLoaded', function() {" +
+            "  var element = document.getElementById('custpage_sublist_splits');" +
+            "  element.style.textAlign = 'center';" +
+            "});" +
+            "</script>";
+
+        var fldHTML = form.addField({
+            id: "custpage_script_field",
+            type: serverWidget.FieldType.INLINEHTML,
+            label: "Script Field"
+        }).defaultValue = script;
+    }
+
+    return {
+        onRequest: onRequest
+    };
+
+});
